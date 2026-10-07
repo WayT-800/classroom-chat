@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#173d51"><meta name="description" content="별명으로 만나는 우리 반의 작은 채팅방">
+  <title>우리반 톡</title><link rel="icon" href="favicon.svg"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="app"></main>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <form id="settings-form" class="dialog-form">
+      <div class="dialog-heading"><h2 id="settings-title">Supabase 연결</h2><button type="button" class="icon-button" data-close aria-label="닫기">×</button></div>
+      <p class="muted">SQL 설정과 익명 로그인을 활성화한 후 프로젝트의 공개용 연결 정보를 입력하세요.</p>
+      <label>프로젝트 URL<input name="url" type="url" placeholder="https://…supabase.co" required></label>
+      <label>Publishable key 또는 anon key<textarea name="key" rows="3" spellcheck="false" placeholder="sb_publishable_…" required></textarea></label>
+      <p class="field-note">secret / service_role 키와 DB 비밀번호는 입력하지 마세요. 이 설정은 현재 브라우저에만 저장됩니다.</p>
+      <p class="form-error" id="settings-error" role="alert"></p>
+      <button class="button primary" type="submit">연결하고 저장</button>
+    </form>
+  </dialog>
+  <dialog id="admin-dialog" aria-labelledby="admin-title">
+    <form id="admin-form" class="dialog-form">
+      <div class="dialog-heading"><h2 id="admin-title">관리자 입장</h2><button type="button" class="icon-button" data-close aria-label="닫기">×</button></div>
+      <p class="muted">관리자는 두 방의 대화와 참여자를 관리할 수 있습니다.</p>
+      <label>관리자 비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
+      <p class="form-error" id="admin-error" role="alert"></p>
+      <button class="button primary" type="submit">관리자로 입장</button>
+    </form>
+  </dialog>
+  <dialog id="kick-dialog" aria-labelledby="kick-title">
+    <form id="kick-form" class="dialog-form">
+      <h2 id="kick-title">참여자를 내보낼까요?</h2><p id="kick-description"></p>
+      <p class="field-note">이 접속은 해당 방에 다시 입장할 수 없습니다. 다른 브라우저로 새 접속을 만드는 것까지 차단하지는 않습니다.</p>
+      <p id="kick-error" class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close>취소</button><button type="submit" class="button danger">내보내기</button></div>
+    </form>
+  </dialog>
+  <script src="config.js"></script><script src="supabase.js"></script><script type="module" src="app.js"></script>
+</body>
+</html>
