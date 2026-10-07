@@ -36,6 +36,19 @@
       <div class="dialog-actions"><button type="button" class="button secondary" data-close>취소</button><button type="submit" class="button danger">내보내기</button></div>
     </form>
   </dialog>
+  <dialog id="clear-dialog" aria-labelledby="clear-title">
+    <form id="clear-form" class="dialog-form">
+      <h2 id="clear-title">대화방을 청소할까요?</h2><p id="clear-description"></p>
+      <p class="field-note">삭제한 대화는 복구할 수 없습니다. 필요한 대화는 먼저 ‘기록 저장’으로 내려받으세요. 다른 참여자의 화면에도 반영되지만, 이미 저장한 파일이나 캡처는 삭제되지 않습니다.</p>
+      <p id="clear-error" class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close>취소</button><button type="submit" class="button danger">전체 대화 삭제</button></div>
+    </form>
+  </dialog>
+  <dialog id="idle-dialog" aria-labelledby="idle-title">
+    <div class="dialog-form"><h2 id="idle-title">계속 참여하고 계신가요?</h2>
+    <p>30분 동안 입력·클릭·스크롤이 없었습니다.</p><p id="idle-countdown" role="timer"></p>
+    <button type="button" class="button primary" id="idle-continue">계속 참여</button></div>
+  </dialog>
   <script src="config.js"></script><script src="supabase.js"></script><script type="module" src="app.js"></script>
 </body>
 </html>

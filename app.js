@@ -9,7 +9,8 @@ let config = window.CHAT_CONFIG?.supabaseUrl ? window.CHAT_CONFIG : readJson('cl
 let client, user, room, selected = new URL(location.href).searchParams.get('room') === 'room-2' ? 'room-2' : 'room-1';
 let admin = false, nickname = '', demo = false, channel, timer, messages = [], people = [];
 let moreHistory = false, fetching = false, refreshing = false, switching = false, connection = '연결 중', toastTimer, kickTarget;
-let pendingSend = null, generation = 0;
+let activityAt=Date.now(), activityDirty=false, idleTimer;
+let pendingSend = null, generation = 0, clearedThrough = 0;
 
 function toast(text) { const target = $('#toast'); target.textContent=text; target.hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>target.hidden=true,4500); }
 function errorText(error) {
@@ -87,7 +88,7 @@ function renderChat() {
   app.innerHTML=`<section class="chat-shell"><aside class="sidebar">${brand()}<div class="sidebar-label">우리의 채팅방</div>
     ${rooms.map((r,i)=>`<button class="nav-room ${r.id===room?'active':''}" data-switch="${r.id}"><span class="room-number">0${i+1}</span><span><strong>${escapeHtml(r.name)}</strong><small>${r.id===room?'현재 대화 중':'방 바꾸기'}</small></span></button>`).join('')}
     <div class="sidebar-bottom"><div class="me-card"><div class="avatar me">${escapeHtml(nickname.slice(0,1))}</div><div><strong>${escapeHtml(nickname)}</strong><small>${admin?'관리자':'나의 별명'}</small></div></div><button class="text-button" id="leave">방 나가기</button>${admin?'<button class="text-button" id="admin-logout">관리자 로그아웃</button>':''}</div></aside>
-    <section class="chat-main" aria-label="대화"><header class="chat-header"><button class="icon-button mobile-back" id="mobile-leave" aria-label="방 나가기">‹</button><div class="chat-title-wrap"><h1>${escapeHtml(roomName())}</h1><div class="connection" id="connection">${demo?'화면 미리보기':escapeHtml(connection)}</div></div><div class="chat-tools"><button class="text-button" id="share">초대 링크</button>${admin?'<button class="text-button" id="export">기록 저장</button>':''}<button class="text-button mobile-people" id="toggle-people" aria-expanded="false" aria-controls="people-panel">참여자</button></div></header>
+    <section class="chat-main" aria-label="대화"><header class="chat-header"><button class="icon-button mobile-back" id="mobile-leave" aria-label="방 나가기">‹</button><div class="chat-title-wrap"><h1>${escapeHtml(roomName())}</h1><div class="connection" id="connection">${demo?'화면 미리보기':escapeHtml(connection)}</div></div><div class="chat-tools"><button class="text-button" id="share">초대 링크</button>${admin?'<button class="text-button" id="export">기록 저장</button><button class="text-button" id="clear-chat">대화 청소</button>':''}<button class="text-button mobile-people" id="toggle-people" aria-expanded="false" aria-controls="people-panel">참여자</button></div></header>
     ${demo?'<div class="preview-banner">미리보기 · 샘플 대화입니다. 여기서 보낸 메시지는 저장되거나 다른 사람에게 전달되지 않습니다.</div>':''}
     <div class="message-area" id="messages" role="log" aria-label="채팅 메시지" aria-live="polite"></div>
     <form class="composer" id="send-form"><div class="composer-row"><textarea id="message-input" name="body" rows="1" maxlength="2000" aria-label="메시지" placeholder="메시지를 입력하세요" required></textarea><button class="button send-button" type="submit">전송</button></div><div class="composer-footer"><span>Enter 전송 · Shift + Enter 줄바꿈</span><span id="char-count">0 / 2,000</span></div><p class="form-error" id="send-error" role="alert"></p></form></section>
@@ -102,6 +103,7 @@ function renderChat() {
   $('#toggle-people').onclick=()=>{const open=$('#people-panel').classList.toggle('open');$('#toggle-people').setAttribute('aria-expanded',String(open));};
   $('#share').onclick=async()=>{if(demo)return toast('Supabase 연결 후 실제 방 링크를 공유할 수 있어요.');const url=new URL(location.href);url.searchParams.set('room',room);try{await navigator.clipboard.writeText(url.href);toast('초대 링크를 복사했습니다. 비밀번호는 따로 알려주세요.');}catch{toast('주소창의 링크를 복사해 주세요.');}};
   $('#export')?.addEventListener('click',exportHistory);
+  $('#clear-chat')?.addEventListener('click',()=>{ $('#clear-description').textContent=roomName()+'의 모든 대화와 입퇴장 알림을 삭제합니다. 참여자는 그대로 유지됩니다.'; $('#clear-error').textContent=''; showDialog('#clear-dialog'); });
   const input=$('#message-input');
   input.oninput=()=>{$('#char-count').textContent=input.value.length.toLocaleString()+' / 2,000';input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';};
   input.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();$('#send-form').requestSubmit();}};
@@ -123,6 +125,7 @@ function renderMessages(scroll=false) {
   for(const message of list){
     const date=new Date(message.created_at);const day=date.toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'short'});
     if(day!==lastDay){html+=`<div class="day-divider"><span>${escapeHtml(day)}</span></div>`;lastDay=day;}
+    if(message.kind==='system'||message.kind==='clear'){html+=`<div class="system-message">${escapeHtml(message.body)}</div>`;continue;}
     const own=message.user_id===user?.id;
     html+=`<article class="message ${own?'own':''}">${own?'':`<div class="avatar">${escapeHtml(message.nickname.slice(0,1))}</div>`}<div class="message-stack">${own?'':`<span class="message-name">${escapeHtml(message.nickname)}${message.is_admin?'<span class="admin-mark">관리자</span>':''}</span>`}<div class="message-body-row"><div class="bubble">${escapeHtml(message.body)}</div><time class="message-time" datetime="${escapeHtml(message.created_at)}">${date.toLocaleTimeString('ko-KR',{hour:'numeric',minute:'2-digit'})}</time></div></div></article>`;
   }
@@ -130,14 +133,17 @@ function renderMessages(scroll=false) {
   $('#more-history')?.addEventListener('click',loadOlder);
   if(scroll||atBottom) area.scrollTop=area.scrollHeight;else area.scrollTop=oldTop+(area.scrollHeight-oldHeight);
 }
-function mergeMessages(newMessages) {const map=new Map(messages.map(m=>[m.id,m]));newMessages.forEach(m=>map.set(m.id,m));messages=[...map.values()].sort((a,b)=>a.id-b.id);}
+function applyClear(cutoff){clearedThrough=Math.max(clearedThrough,Number(cutoff)||0);messages=messages.filter(m=>Number(m.id)>clearedThrough);if(clearedThrough)moreHistory=false;}
+function mergeMessages(newMessages) {for(const m of newMessages)if(m.kind==='clear')applyClear(Number(m.id)-1);newMessages=newMessages.filter(m=>Number(m.id)>clearedThrough);const map=new Map(messages.map(m=>[m.id,m]));newMessages.forEach(m=>map.set(m.id,m));messages=[...map.values()].sort((a,b)=>a.id-b.id);}
 function setConnection(text,offline=false){connection=text;const target=$('#connection');if(target&&!demo){target.textContent=text;target.classList.toggle('offline-line',offline);}}
-async function cleanupRoom(){generation++;clearInterval(timer);timer=null;if(channel&&client){const old=channel;channel=null;await client.removeChannel(old);} }
+async function cleanupRoom(){generation++;clearInterval(idleTimer);$('#idle-dialog').close();clearInterval(timer);timer=null;if(channel&&client){const old=channel;channel=null;await client.removeChannel(old);} }
 async function enterRoom(id){
-  await cleanupRoom();room=id;selected=id;demo=false;messages=[];people=[];moreHistory=false;
-  const status=await rpc('chat_status',{p_room:id,p_touch:true});admin=status.is_admin;nickname=status.nickname;people=status.participants;
+  await cleanupRoom();room=id;selected=id;demo=false;messages=[];people=[];moreHistory=false;clearedThrough=0;
+  const status=await rpc('chat_status',{p_room:id,p_touch:true});admin=status.is_admin;nickname=status.nickname;people=status.participants;applyClear(status.cleared_through);
   const url=new URL(location.href);url.searchParams.set('room',id);history.replaceState(null,'',url);storeLocal('class-chat-room',id);
   connection='대화 불러오는 중';renderChat();
+  activityAt=status.activity_at?new Date(status.activity_at).getTime():Date.now();activityDirty=false;
+  idleTimer=setInterval(checkIdle,1000);
   const gen=generation;
   channel=client.channel('chat-'+id+'-'+crypto.randomUUID()).on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages',filter:'room_id=eq.'+id},payload=>{
     if(generation!==gen)return;mergeMessages([payload.new]);renderMessages();
@@ -163,10 +169,12 @@ async function syncLatest(gen=generation,initial=false){
 async function refreshStatus(gen=generation){
   if(refreshing||demo||!room||generation!==gen)return;refreshing=true;
   try{
+    if(activityDirty&&!admin){activityDirty=false;try{await rpc('chat_activity',{p_room:room});}catch(e){activityDirty=true;throw e;}if(generation!==gen)return;}
     const status=await rpc('chat_status',{p_room:room,p_touch:true});if(generation!==gen)return;
-    people=status.participants;
+    if(status.activity_at)activityAt=Math.max(activityAt,new Date(status.activity_at).getTime());
+    people=status.participants;applyClear(status.cleared_through);
     if(admin&&!status.is_admin){await leaveToLobby(false);toast('관리자 접속이 만료되었습니다. 다시 로그인하세요.');return;}
-    renderPeople();
+    renderPeople();renderMessages();
     if(!channel || connection!=='실시간으로 연결됨')await syncLatest(gen);
   }catch(e){if(generation!==gen)return;if(e.state){await leaveToLobby(false);toast(errorText(e));}else setConnection(errorText(e),true);}
   finally{refreshing=false;}
@@ -217,6 +225,27 @@ function startDemo(){
     {id:4,user_id:'demo-2',nickname:'지우',body:'같이 이야기하니까 더 재미있을 것 같아요!',created_at:new Date(now-60000).toISOString()}
   ];moreHistory=false;renderChat();
 }
+$('#clear-form').onsubmit=event=>{event.preventDefault();const form=event.currentTarget;const gen=generation;busy(form,async()=>{const result=await rpc('chat_clear',{p_room:room});if(gen!==generation)return;mergeMessages([result.message]);renderMessages(true);$('#clear-dialog').close();toast('대화방을 청소했습니다.');},'#clear-error');};
+
+function noteActivity(event){
+  if(event && !event.isTrusted)return;
+  if(!room||demo||admin||$('#idle-dialog').open)return;
+  activityAt=Date.now();activityDirty=true;
+}
+async function checkIdle(){
+  if(!room||demo||admin)return;
+  const remaining=31*60*1000-(Date.now()-activityAt);
+  if(remaining<=0){await leaveToLobby();toast('30분간 활동이 없어 대기 후 자동 퇴장되었습니다. 다시 입장할 수 있어요.');return;}
+  if(remaining<=60000){$('#idle-countdown').textContent=Math.ceil(remaining/1000)+'초 후 자동 퇴장됩니다.';if(!$('#idle-dialog').open)showDialog('#idle-dialog');}
+}
+for(const event of ['pointerdown','keydown','input','scroll'])document.addEventListener(event,noteActivity,{capture:true,passive:true});
+$('#idle-continue').onclick=async()=>{
+  const button=$('#idle-continue');button.disabled=true;
+  try{await rpc('chat_activity',{p_room:room});await refreshStatus();if(room){activityAt=Date.now();activityDirty=false;$('#idle-dialog').close();}}
+  catch(e){toast(errorText(e));}finally{button.disabled=false;}
+};
+$('#idle-dialog').addEventListener('cancel',event=>event.preventDefault());
+
 $('#settings-form').onsubmit=event=>{event.preventDefault();const form=event.currentTarget;busy(form,async()=>{
   const next=validateConfig(form.elements.url.value.trim(),form.elements.key.value.trim());
   await cleanupRoom();room=null;demo=false;user=null;client=null;config=next;
