@@ -1,4 +1,4 @@
-import {roleNames,roleScenes} from './roleplay-data.js?v=3';
+import {roleNames,roleScenes} from './roleplay-data.js?v=4';
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $('#app');
 const rooms = [{id:'room-1',name:'채팅방 1'}, {id:'room-2',name:'채팅방 2'}];
@@ -318,7 +318,7 @@ function showRoleCard(){
  const mine=myAssignment();if(!mine)return;
  let dialog=$('#role-card-dialog');if(!dialog){dialog=document.createElement('dialog');dialog.id='role-card-dialog';dialog.setAttribute('aria-labelledby','role-card-title');document.body.append(dialog);}
  const s=roleScenes[roleSession.scenario-1],r=s.roles[mine.role];
- dialog.innerHTML=`<div class="dialog-form role-card"><div class="dialog-heading"><h2 id="role-card-title">내 역할은 ${escapeHtml(roleNames[mine.role])}</h2><button class="icon-button" id="role-close" aria-label="역할카드 닫기">×</button></div><span class="pill">상황 ${roleSession.scenario} · ${escapeHtml(nickname)}의 역할</span><div><h3>내 상황</h3><p>${escapeHtml(r[0])}</p></div><div><h3>내가 할 일</h3><p>${escapeHtml(r[1])}</p></div><div><h3>말할 순서</h3><p>${escapeHtml(r[2])}</p></div><p class="field-note">친구의 말을 읽고 한 번 더 답해 주세요. 대사 정답은 없어요. 내 말로 표현해 보세요.</p><button class="button primary" id="role-confirm">확인했어요 · 대화하기</button></div>`;
+ dialog.innerHTML=`<div class="dialog-form role-card"><div class="dialog-heading"><h2 id="role-card-title">내 역할은 ${escapeHtml(roleNames[mine.role])}</h2><button class="icon-button" id="role-close" aria-label="역할카드 닫기">×</button></div><span class="pill">상황 ${roleSession.scenario} · ${escapeHtml(nickname)}의 역할</span><div><h3>내가 처한 상황</h3><p>${escapeHtml(r.situation)}</p></div><div><h3>내 마음과 바라는 점</h3><p>${escapeHtml(r.feeling)}</p></div><div><h3>내가 전할 내용</h3><ul>${r.points.map(point=>'<li>'+escapeHtml(point)+'</li>').join('')}</ul></div><div><h3>말할 순서</h3><p>${escapeHtml(r.order)}</p></div><p class="field-note">이 인물이 되어 내 말로 표현해요. 마음은 다르게 느낄 수도 있어요. 친구의 답을 읽고 대화를 이어 가요.</p><button class="button primary" id="role-confirm">확인했어요 · 대화하기</button></div>`;
  $('#role-close').onclick=$('#role-confirm').onclick=()=>dialog.close();if(!dialog.open)dialog.showModal();
 }
 async function controlRoleplay(action){
