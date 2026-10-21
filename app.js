@@ -58,7 +58,7 @@ async function connect() {
 }
 function openSettings() { const form=$('#settings-form'); form.elements.url.value=config?.supabaseUrl || ''; form.elements.key.value=config?.publishableKey || ''; $('#settings-error').textContent=''; showDialog('#settings-dialog'); }
 function renderLobby() {
-  app.innerHTML=`<header class="site-header">${brand()}<div class="header-actions"><span class="pill">교육용 채팅</span><button class="text-button" id="settings-open">연결 설정</button></div></header>
+  app.innerHTML=`<header class="site-header">${brand()}<div class="header-actions"><span class="pill">교육용 채팅</span></div></header>
     ${!client || !user ? '<div class="setup-banner"><span>아직 Supabase에 연결되지 않았어요. 설정을 마치면 함께 대화할 수 있습니다.</span><button id="preview" class="text-button">화면 미리보기</button></div>' : ''}
     <section class="lobby"><div class="intro"><p class="eyebrow">OUR CLASS, OUR CONVERSATION</p><h1>같이 이야기할까요?</h1><p>이야기할 방을 고르고,<br>친구들이 알아볼 별명으로 들어오세요.</p>
       <div class="rooms" role="group" aria-label="채팅방 선택">${rooms.map((r,i)=>`<button class="room-choice ${r.id===selected?'selected':''}" data-room="${r.id}" aria-pressed="${r.id===selected}"><span class="room-number">0${i+1}</span><span><span class="room-label">${escapeHtml(r.name)}</span><span class="room-caption">최대 10명 · 비밀번호</span></span><span class="room-radio"></span></button>`).join('')}</div>
@@ -69,7 +69,6 @@ function renderLobby() {
       <p class="form-error" id="join-error" role="alert"></p><button class="button primary" type="submit">채팅방 입장</button><p class="field-note">함께 쓰는 공간이에요. 서로를 존중하며 이야기해요.</p></form>
       <div class="join-footer"><span class="small muted">방을 관리하시나요?</span><button class="text-button" id="admin-open">관리자 입장</button></div></div></section>
       <footer class="lobby-footer">우리반 톡 · 두 개의 작은 대화 공간</footer>`;
-  $('#settings-open').onclick=openSettings;
   $('#preview')?.addEventListener('click',startDemo);
   $('[data-room="'+selected+'"]')?.setAttribute('aria-pressed','true');
   document.querySelectorAll('[data-room]').forEach(button=>button.onclick=()=>{
