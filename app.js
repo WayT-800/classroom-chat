@@ -93,7 +93,7 @@ function renderChat() {
     <section id="roleplay-panel" class="roleplay-panel" aria-label="역할놀이"></section>
     <div class="message-area" id="messages" role="log" aria-label="채팅 메시지" aria-live="polite"></div>
     <form class="composer" id="send-form"><div class="composer-row"><textarea id="message-input" name="body" rows="1" maxlength="2000" aria-label="메시지" placeholder="메시지를 입력하세요" required></textarea><button class="button send-button" type="submit">전송</button></div><div class="composer-footer"><span>Enter 전송 · Shift + Enter 줄바꿈</span><span id="char-count">0 / 2,000</span></div><p class="form-error" id="send-error" role="alert"></p></form></section>
-    <aside class="participants" id="people-panel" aria-label="참여자 목록"><h2>함께하는 사람 <span class="participant-count" id="people-count"></span></h2><div id="people"></div><p class="people-note">${admin?'관리자는 정원에 포함되지 않습니다. 내보내기를 누르면 해당 접속의 참여가 차단됩니다.':'역할놀이는 학생 3명 또는 4명이 함께해요. 대화 기록은 나간 후에도 보관됩니다.'}</p></aside></section>`;
+    <aside class="participants" id="people-panel" aria-label="참여자 목록"><h2>함께하는 사람 <span class="participant-count" id="people-count"></span></h2><div id="people"></div><p class="people-note">${admin?'관리자는 정원에 포함되지 않습니다. 내보내기는 현재 참여를 종료합니다. 방 비밀번호로 다시 입장할 수 있습니다.':'역할놀이는 학생 3명 또는 4명이 함께해요. 대화 기록은 나간 후에도 보관됩니다.'}</p></aside></section>`;
   $('#leave').onclick=leaveToLobby;$('#mobile-leave').onclick=leaveToLobby;
   $('#admin-logout')?.addEventListener('click',async()=>{try{await rpc('chat_admin_logout');admin=false;await leaveToLobby();toast('관리자 로그아웃되었습니다.');}catch(e){toast(errorText(e));}});
   document.querySelectorAll('[data-switch]').forEach(button=>button.onclick=async()=>{
@@ -296,16 +296,21 @@ async function refreshRoleplay(){
  }catch(e){if(gen!==generation)return;if(/PGRST202|schema cache|function.*not.*exist/i.test((e.code||'')+' '+e.message)){roleAvailable=false;renderRoleplay();}}
  finally{roleFetching=false;}
 }
+const rolePanelState = new Map();
 function renderRoleplay(){
  const panel=$('#roleplay-panel');if(!panel)return;
  if(demo){panel.hidden=true;return;}panel.hidden=false;
  if(!roleAvailable){panel.innerHTML=admin?'<p>역할놀이 DB 업데이트가 필요합니다. 준비한 SQL을 실행한 뒤 새로고침해 주세요.</p>':'';panel.hidden=!admin;return;}
  const s=roleSession&&roleSession.phase!=='off'?roleScenes[roleSession.scenario-1]:null;
  const mine=myAssignment();
- panel.innerHTML=`${admin?`<div class="role-controls"><label>연습 상황<select id="role-scenario" ${roleSession?.phase==='active'?'disabled':''}>${roleScenes.map((v,i)=>`<option value="${i+1}" ${(roleSession?.phase==='active'?roleSession.scenario:roleChoice)===i+1?'selected':''}>${escapeHtml(v.title)}</option>`).join('')}</select></label><div class="role-buttons"><button class="button primary" id="role-start" ${roleSession?.phase==='active'?'disabled':''}>역할 나누고 시작</button><button class="button secondary" id="role-end" ${roleSession?.phase==='active'?'':'disabled'}>연습 종료</button>${roleSession&&roleSession.phase!=='off'?'<button class="text-button" id="role-off">일반 채팅</button>':''}</div></div>`:''}
+ const panelKey=room+':'+(roleSession?.id||'none')+':'+(roleSession?.phase||'off');
+ const folded=rolePanelState.has(panelKey)?rolePanelState.get(panelKey):roleSession?.phase==='active';
+ panel.innerHTML=`<div class="role-compact"><strong>${s?'상황 '+roleSession.scenario+' · '+escapeHtml(s.title.replace(/^[①②③]\s*/,'')):'연습 상황'}</strong><span>${roleSession?.phase==='active'?'연습 중':roleSession?.phase==='ended'?'연습 종료':'준비'}</span>${mine&&!admin?'<button class="button secondary" id="role-card-compact">내 역할 보기</button>':''}<button class="text-button" id="role-toggle" aria-expanded="${!folded}" aria-controls="role-details">${folded?'펼치기':'접기'}</button></div><div id="role-details" ${folded?'hidden':''}>${admin?`<div class="role-controls"><label>연습 상황<select id="role-scenario" ${roleSession?.phase==='active'?'disabled':''}>${roleScenes.map((v,i)=>`<option value="${i+1}" ${(roleSession?.phase==='active'?roleSession.scenario:roleChoice)===i+1?'selected':''}>${escapeHtml(v.title)}</option>`).join('')}</select></label><div class="role-buttons"><button class="button primary" id="role-start" ${roleSession?.phase==='active'?'disabled':''}>역할 나누고 시작</button><button class="button secondary" id="role-end" ${roleSession?.phase==='active'?'':'disabled'}>연습 종료</button>${roleSession&&roleSession.phase!=='off'?'<button class="text-button" id="role-off">일반 채팅</button>':''}</div></div>`:''}
  ${s?`<div class="role-topic"><strong>${escapeHtml(s.title)}</strong><span class="pill">${roleSession.count}명 · ${roleSession.phase==='active'?'연습 중':'연습 종료'}</span><p>${escapeHtml(s.intro)}</p></div><div class="role-summary"><span>${admin?'교사는 역할 배정에서 제외됩니다.':mine?'<strong>내 역할: '+escapeHtml(roleNames[mine.role])+'</strong>':'이번 연습은 이미 시작됐어요. 다음 상황부터 참여해요.'}</span>${mine&&!admin?'<button class="button secondary" id="role-card-open">내 역할 보기</button>':''}</div>${admin?'<div class="role-roster">'+roleSession.assignments.map(a=>`<span>${escapeHtml(a.nickname)} → <strong>${escapeHtml(roleNames[a.role])}</strong></span>`).join('')+'</div>':''}<div class="role-goal">${roleSession.phase==='ended'?'친구가 배려해 준 말을 찾아보세요. 다음 상황을 기다려요.':'목표: '+escapeHtml(s.goal)+' · 친구의 말에 한 번 더 답해요.'}</div>`:'<div class="role-wait">역할놀이 준비 · 학생 3명 또는 4명이 모이면 선생님이 시작해요.</div>'}
  ${readLocal('class-chat-role-draft-'+room)?'<button class="text-button" id="role-restore-draft">이전 상황의 작성 중인 말 불러오기</button>':''}
- <p class="form-error" id="role-error" role="alert"></p>`;
+ </div><p class="form-error" id="role-error" role="alert"></p>`;
+ $('#role-toggle').onclick=()=>{rolePanelState.set(panelKey,!folded);renderRoleplay()};
+ $('#role-card-compact')?.addEventListener('click',showRoleCard);
  $('#role-scenario')?.addEventListener('change',e=>roleChoice=Number(e.target.value));
  $('#role-start')?.addEventListener('click',()=>controlRoleplay('start'));
  $('#role-end')?.addEventListener('click',()=>controlRoleplay('end'));
@@ -327,6 +332,7 @@ async function controlRoleplay(action){
  try{
   const result=await rpc('chat_role_control',{p_room:room,p_action:action,p_scenario:roleChoice,p_expected:roleSession?.id||null});
   if(gen!==generation)return;roleSession=result.session;roleSignature=JSON.stringify(roleSession);
+  if(action==='start')rolePanelState.set(room+':'+roleSession.id+':'+roleSession.phase,true);
   if(action==='end')roleChoice=Math.min(roleSession.scenario+1,3);
   renderRoleplay();await syncLatest(gen);toast(action==='start'?'역할을 나눴어요. 학생들의 화면에 역할카드가 표시됩니다.':action==='end'?'연습을 마쳤어요. 다음 상황을 선택할 수 있어요.':'일반 채팅으로 돌아왔어요.');
  }catch(e){if(gen===generation){renderRoleplay();$('#role-error').textContent=errorText(e);await refreshRoleplay();}}
