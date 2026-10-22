@@ -88,12 +88,13 @@ function renderChat() {
   app.innerHTML=`<section class="chat-shell"><aside class="sidebar">${brand()}<div class="sidebar-label">우리의 채팅방</div>
     ${rooms.map((r,i)=>`<button class="nav-room ${r.id===room?'active':''}" data-switch="${r.id}"><span class="room-number">0${i+1}</span><span><strong>${escapeHtml(r.name)}</strong><small>${r.id===room?'현재 대화 중':'방 바꾸기'}</small></span></button>`).join('')}
     <div class="sidebar-bottom"><div class="me-card"><div class="avatar me">${escapeHtml(nickname.slice(0,1))}</div><div><strong>${escapeHtml(nickname)}</strong><small>${admin?'관리자':'나의 별명'}</small></div></div><button class="text-button" id="leave">방 나가기</button>${admin?'<button class="text-button" id="admin-logout">관리자 로그아웃</button>':''}</div></aside>
-    <section class="chat-main" aria-label="대화"><header class="chat-header"><button class="icon-button mobile-back" id="mobile-leave" aria-label="방 나가기">‹</button><div class="chat-title-wrap"><h1>${escapeHtml(roomName())}</h1><div class="connection" id="connection">${demo?'화면 미리보기':escapeHtml(connection)}</div></div><div class="chat-tools"><button class="text-button" id="share">초대 링크</button>${admin?'<button class="text-button" id="export">기록 저장</button><button class="text-button" id="clear-chat">대화 청소</button>':''}<button class="text-button mobile-people" id="toggle-people" aria-expanded="false" aria-controls="people-panel">참여자</button></div></header>
+    <section class="chat-main" aria-label="대화"><header class="chat-header"><button class="icon-button mobile-back" id="mobile-leave" aria-label="방 나가기">‹</button><div class="chat-title-wrap"><h1>${escapeHtml(roomName())}</h1><div class="connection" id="connection">${demo?'화면 미리보기':escapeHtml(connection)}</div></div><div class="chat-tools"><button class="text-button" id="share">초대 링크</button>${admin?'<button class="text-button" id="export">기록 저장</button><button class="text-button" id="clear-chat">대화 청소</button><button class="text-button" id="freeze-toggle" aria-pressed="false">얼음</button>':''}<button class="text-button mobile-people" id="toggle-people" aria-expanded="false" aria-controls="people-panel">참여자</button></div></header>
     ${demo?'<div class="preview-banner">미리보기 · 샘플 대화입니다. 여기서 보낸 메시지는 저장되거나 다른 사람에게 전달되지 않습니다.</div>':''}
     <section id="roleplay-panel" class="roleplay-panel" aria-label="역할놀이"></section>
-    <div class="message-area" id="messages" role="log" aria-label="채팅 메시지" aria-live="polite"></div>
+    <div id="freeze-banner" class="freeze-banner" role="status" hidden>❄ 얼음! 관리자가 해제하면 대화할 수 있어요.</div><div class="message-area" id="messages" role="log" aria-label="채팅 메시지" aria-live="polite"></div>
     <form class="composer" id="send-form"><div class="composer-row"><textarea id="message-input" name="body" rows="1" maxlength="2000" aria-label="메시지" placeholder="메시지를 입력하세요" required></textarea><button class="button send-button" type="submit">전송</button></div><div class="composer-footer"><span>Enter 전송 · Shift + Enter 줄바꿈</span><span id="char-count">0 / 2,000</span></div><p class="form-error" id="send-error" role="alert"></p></form></section>
     <aside class="participants" id="people-panel" aria-label="참여자 목록"><h2>함께하는 사람 <span class="participant-count" id="people-count"></span></h2><div id="people"></div><p class="people-note">${admin?'관리자는 정원에 포함되지 않습니다. 내보내기는 현재 참여를 종료합니다. 방 비밀번호로 다시 입장할 수 있습니다.':'역할놀이는 학생 3명 또는 4명이 함께해요. 대화 기록은 나간 후에도 보관됩니다.'}</p></aside></section>`;
+  $('#freeze-toggle')?.addEventListener('click',toggleFreeze);
   $('#leave').onclick=leaveToLobby;$('#mobile-leave').onclick=leaveToLobby;
   $('#admin-logout')?.addEventListener('click',async()=>{try{await rpc('chat_admin_logout');admin=false;await leaveToLobby();toast('관리자 로그아웃되었습니다.');}catch(e){toast(errorText(e));}});
   document.querySelectorAll('[data-switch]').forEach(button=>button.onclick=async()=>{
@@ -142,7 +143,7 @@ async function enterRoom(id){
   await cleanupRoom();room=id;selected=id;demo=false;messages=[];people=[];moreHistory=false;clearedThrough=0;
   const status=await rpc('chat_status',{p_room:id,p_touch:true});admin=status.is_admin;nickname=status.nickname;people=status.participants;applyClear(status.cleared_through);
   const url=new URL(location.href);url.searchParams.set('room',id);history.replaceState(null,'',url);storeLocal('class-chat-room',id);
-  connection='대화 불러오는 중';renderChat();await refreshRoleplay();roleTimer=setInterval(()=>refreshRoleplay(),3000);
+  connection='대화 불러오는 중';renderChat();await refreshRoleplay();await refreshFreeze();roleTimer=setInterval(()=>{refreshRoleplay();refreshFreeze();},2000);
   activityAt=status.activity_at?new Date(status.activity_at).getTime():Date.now();activityDirty=false;
   idleTimer=setInterval(checkIdle,1000);
   const gen=generation;
@@ -266,14 +267,30 @@ async function init(){
   catch(e){client=null;user=null;renderLobby();toast(errorText(e));}
 }
 
+let roomFrozen=false,freezeBusy=false;
 let roleSession=null,roleTimer=null,roleFetching=false,roleAvailable=true,roleSignature='',roleChoice=1,roleBusy=false;
-function resetRoleplay(){clearInterval(roleTimer);roleTimer=null;roleSession=null;roleSignature='';roleAvailable=true;roleBusy=false;$('#role-card-dialog')?.close();}
+function resetRoleplay(){roomFrozen=false;freezeBusy=false;clearInterval(roleTimer);roleTimer=null;roleSession=null;roleSignature='';roleAvailable=true;roleBusy=false;$('#role-card-dialog')?.close();}
 function myAssignment(){return roleSession?.assignments?.find(a=>a.user_id===user?.id);}
 function updateRoleComposer(){
  const input=$('#message-input'),button=$('#send-form button[type="submit"]');if(!input||!button)return;
- const blocked=!admin&&roleSession&&roleSession.phase!=='off'&&(roleSession.phase!=='active'||!myAssignment());
+ const blocked=roomFrozen||!admin&&roleSession&&roleSession.phase!=='off'&&(roleSession.phase!=='active'||!myAssignment());
  input.disabled=!!blocked;button.disabled=!!blocked;
- input.placeholder=blocked?(roleSession.phase==='ended'?'다음 연습을 기다려 주세요.':'다음 연습부터 참여할 수 있어요.'):(roleSession?.phase==='active'?'내 역할이 되어 친구에게 말해 보세요.':'메시지를 입력하세요');
+ input.placeholder=roomFrozen?'얼음 상태입니다. 해제되면 대화할 수 있어요.':blocked?(roleSession.phase==='ended'?'다음 연습을 기다려 주세요.':'다음 연습부터 참여할 수 있어요.'):(roleSession?.phase==='active'?'내 역할이 되어 친구에게 말해 보세요.':'메시지를 입력하세요');
+}
+function paintFreeze(){
+ const banner=$('#freeze-banner');if(banner)banner.hidden=!roomFrozen;
+ const b=$('#freeze-toggle');if(b){b.textContent=roomFrozen?'얼음 해제':'얼음';b.setAttribute('aria-pressed',String(roomFrozen));b.disabled=freezeBusy;}
+ updateRoleComposer();
+}
+async function refreshFreeze(){
+ if(demo||!room)return;const gen=generation;
+ try{const data=await rpc('chat_freeze_status',{p_room:room});if(gen!==generation)return;roomFrozen=data.frozen;paintFreeze();}catch{}
+}
+async function toggleFreeze(){
+ if(freezeBusy)return;freezeBusy=true;paintFreeze();const gen=generation;
+ try{const data=await rpc('chat_freeze_control',{p_room:room,p_frozen:!roomFrozen});if(gen!==generation)return;roomFrozen=data.frozen;toast(roomFrozen?'모두의 채팅을 얼렸습니다.':'얼음을 해제했습니다.');}
+ catch(e){if(gen===generation)toast(errorText(e));}
+ finally{if(gen===generation){freezeBusy=false;paintFreeze();}}
 }
 async function refreshRoleplay(){
  if(demo||!room||roleFetching)return;
